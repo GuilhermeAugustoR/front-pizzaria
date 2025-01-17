@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+"use client";
+
 import { useState, ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -26,8 +29,25 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/toast";
 import { X } from "lucide-react";
@@ -59,6 +79,8 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
+type Product = FormValues & { id: string };
+
 const categories = [
   { id: "1", name: "Eletrônicos" },
   { id: "2", name: "Roupas" },
@@ -67,11 +89,34 @@ const categories = [
 
 export default function Products() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
+  const [products, setProducts] = useState<Product[]>([
+    {
+      id: "1",
+      name: "Smartphone",
+      price: "999.99",
+      description: "Um smartphone avançado",
+      category_id: "1",
+      banner: undefined,
+    },
+    {
+      id: "2",
+      name: "Camiseta",
+      price: "29.99",
+      description: "Uma camiseta confortável",
+      category_id: "2",
+      banner: undefined,
+    },
+  ]);
   const { toast, showToast, hideToast } = useToast();
 
-  const form = useForm<FormValues>({
+  const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
@@ -81,7 +126,20 @@ export default function Products() {
     },
   });
 
-  const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+  const editForm = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: "",
+      price: "",
+      description: "",
+      category_id: "",
+    },
+  });
+
+  const handleImageChange = (
+    event: ChangeEvent<HTMLInputElement>,
+    form: any
+  ) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -97,71 +155,91 @@ export default function Products() {
     }
   };
 
-  const handleImageDelete = () => {
+  const handleImageDelete = (form: any) => {
     form.setValue("banner", undefined, { shouldValidate: true });
     setPreviewImage(null);
     setFileName(null);
-    // Reset the file input
     const fileInput = document.querySelector(
       'input[type="file"]'
     ) as HTMLInputElement;
     if (fileInput) fileInput.value = "";
   };
 
-  async function onSubmit(values: FormValues) {
+  async function onCreateSubmit(values: FormValues) {
     setIsSubmitting(true);
-    // Simula uma chamada de API
     await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Cria um objeto FormData para enviar o arquivo
-    const formData = new FormData();
-    formData.append("name", values.name);
-    formData.append("price", values.price);
-    formData.append("description", values.description);
-    formData.append("category_id", values.category_id);
-    if (values.banner instanceof FileList && values.banner.length > 0) {
-      formData.append("banner", values.banner[0]);
-    }
-
-    console.log(Object.fromEntries(formData));
+    const newProduct = { ...values, id: (products.length + 1).toString() };
+    setProducts([...products, newProduct]);
     setIsSubmitting(false);
     showToast(`O produto "${values.name}" foi criado com sucesso.`);
-
-    // Reset completo do formulário
-    form.reset({
-      name: "",
-      price: "",
-      description: "",
-      category_id: "",
-      banner: undefined,
-    });
+    createForm.reset();
+    setIsCreateOpen(false);
     setPreviewImage(null);
     setFileName(null);
+  }
 
-    // Reset the file input
-    const fileInput = document.querySelector(
-      'input[type="file"]'
-    ) as HTMLInputElement;
-    if (fileInput) fileInput.value = "";
+  async function onEditSubmit(values: FormValues) {
+    setIsSubmitting(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setProducts(
+      products.map((prod) =>
+        prod.id === editingProduct?.id ? { ...prod, ...values } : prod
+      )
+    );
+    setIsSubmitting(false);
+    showToast(`O produto "${values.name}" foi atualizado com sucesso.`);
+    editForm.reset();
+    setIsEditOpen(false);
+    setEditingProduct(null);
+    setPreviewImage(null);
+    setFileName(null);
+  }
 
-    // Reset the category select
-    // form.setValue("category_id", "", { shouldValidate: true });
+  function handleEditClick(product: Product) {
+    setEditingProduct(product);
+    editForm.reset(product);
+    setIsEditOpen(true);
+  }
+
+  function handleDeleteClick(product: Product) {
+    setDeletingProduct(product);
+    setIsDeleteOpen(true);
+  }
+
+  async function handleDeleteConfirm() {
+    if (deletingProduct) {
+      setIsSubmitting(true);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setProducts(products.filter((prod) => prod.id !== deletingProduct.id));
+      setIsSubmitting(false);
+      showToast(`O produto "${deletingProduct.name}" foi excluído.`);
+      setIsDeleteOpen(false);
+      setDeletingProduct(null);
+    }
   }
 
   return (
-    <div className="flex flex-col h-screen justify-center bg-slate-200">
-      <Card className="w-full max-w-2xl h-[90%] mx-auto overflow-x-auto">
-        <CardHeader>
-          <CardTitle>Novo Produto</CardTitle>
-          <CardDescription>
-            Crie um novo produto para o seu catálogo.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">Gerenciamento de Produtos</h1>
+
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogTrigger asChild className="">
+          <Button className="mb-4">Criar Novo Produto</Button>
+        </DialogTrigger>
+        <DialogContent className="max-w-3xl overflow-y-auto h-[40rem]">
+          <DialogHeader>
+            <DialogTitle>Novo Produto</DialogTitle>
+            <DialogDescription>
+              Crie um novo produto para o seu catálogo.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...createForm}>
+            <form
+              onSubmit={createForm.handleSubmit(onCreateSubmit)}
+              className="space-y-4"
+            >
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="name"
                 render={({ field }) => (
                   <FormItem>
@@ -177,7 +255,7 @@ export default function Products() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="price"
                 render={({ field }) => (
                   <FormItem>
@@ -190,7 +268,7 @@ export default function Products() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="description"
                 render={({ field }) => (
                   <FormItem>
@@ -203,7 +281,7 @@ export default function Products() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="category_id"
                 render={({ field }) => (
                   <FormItem>
@@ -227,7 +305,7 @@ export default function Products() {
                 )}
               />
               <FormField
-                control={form.control}
+                control={createForm.control}
                 name="banner"
                 render={({ field: { value, onChange, ...field } }) => (
                   <FormItem>
@@ -238,7 +316,7 @@ export default function Products() {
                           type="file"
                           accept="image/*"
                           onChange={(e) => {
-                            handleImageChange(e);
+                            handleImageChange(e, createForm);
                             onChange(e.target.files);
                           }}
                           {...field}
@@ -248,7 +326,7 @@ export default function Products() {
                             type="button"
                             variant="destructive"
                             size="icon"
-                            onClick={handleImageDelete}
+                            onClick={() => handleImageDelete(createForm)}
                           >
                             <X className="h-4 w-4" />
                           </Button>
@@ -262,9 +340,9 @@ export default function Products() {
               {previewImage && (
                 <div className="mt-4">
                   <img
-                    src={previewImage}
+                    src={previewImage || "/placeholder.svg"}
                     alt="Preview"
-                    className="max-w-lg h-auto rounded-lg"
+                    className="max-w-xs h-auto rounded-lg"
                   />
                 </div>
               )}
@@ -273,20 +351,212 @@ export default function Products() {
                   <p>Arquivo selecionado: {fileName}</p>
                 </div>
               )}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Enviando..." : "Criar Produto"}
+              </Button>
             </form>
           </Form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Editar Produto</DialogTitle>
+            <DialogDescription>
+              Atualize as informações do produto selecionado.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...editForm}>
+            <form
+              onSubmit={editForm.handleSubmit(onEditSubmit)}
+              className="space-y-4"
+            >
+              <FormField
+                control={editForm.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Nome do Produto</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="Digite o nome do produto"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Preço</FormLabel>
+                    <FormControl>
+                      <Input type="text" placeholder="0.00" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="description"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Descrição</FormLabel>
+                    <FormControl>
+                      <Textarea placeholder="Descreva o produto" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="category_id"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Categoria</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione uma categoria" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={editForm.control}
+                name="banner"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <FormItem>
+                    <FormLabel>Banner</FormLabel>
+                    <FormControl>
+                      <div className="flex items-center space-x-2">
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => {
+                            handleImageChange(e, editForm);
+                            onChange(e.target.files);
+                          }}
+                          {...field}
+                        />
+                        {(previewImage || fileName) && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="icon"
+                            onClick={() => handleImageDelete(editForm)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {previewImage && (
+                <div className="mt-4">
+                  <img
+                    src={previewImage || "/placeholder.svg"}
+                    alt="Preview"
+                    className="max-w-xs h-auto rounded-lg"
+                  />
+                </div>
+              )}
+              {!previewImage && fileName && (
+                <div className="mt-4">
+                  <p>Arquivo selecionado: {fileName}</p>
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isSubmitting ? "Atualizando..." : "Atualizar Produto"}
+              </Button>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta ação não pode ser desfeita. Isso excluirá permanentemente o
+              produto "{deletingProduct?.name}" e removerá seus dados de nossos
+              servidores.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteConfirm}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Excluindo..." : "Sim, excluir produto"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Produtos Existentes</CardTitle>
+          <CardDescription>
+            Lista de todos os produtos cadastrados.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ul className="space-y-2">
+            {products.map((product) => (
+              <li
+                key={product.id}
+                className="flex items-center justify-between bg-secondary p-2 rounded"
+              >
+                <div>
+                  <span className="font-bold">{product.name}</span>
+                  <span className="ml-2 text-sm text-muted-foreground">
+                    R$ {product.price}
+                  </span>
+                </div>
+                <div className="space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEditClick(product)}
+                  >
+                    Editar
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => handleDeleteClick(product)}
+                  >
+                    Excluir
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </CardContent>
-        <CardFooter>
-          <Button
-            type="submit"
-            className="w-full"
-            onClick={form.handleSubmit(onSubmit)}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? "Enviando..." : "Criar Produto"}
-          </Button>
-        </CardFooter>
       </Card>
+
       {toast && <Toast message={toast.message} onClose={hideToast} />}
     </div>
   );
