@@ -1,36 +1,52 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from "react";
+import React, { useContext, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CardContent, CardFooter } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AuthLogin } from "@/services/Login/loginService";
+import { LoginContext } from "@/context/loginContext";
+import { useNavigate } from "react-router";
 
-interface LoginFormProps {
-  onSubmit: (email: string, password: string) => Promise<void>;
-}
+// interface LoginFormProps {
+//   onSubmit: (email: string, password: string) => Promise<void>;
+// }
 
-export default function LoginForm({ onSubmit }: LoginFormProps) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+export default function LoginForm() {
+  const navigate = useNavigate();
+  const { setUser, setToken, error, isLoading, setError, setIsLoading } =
+    useContext(LoginContext);
+  const [email, setEmail] = useState("guilherme@teste.com");
+  const [password, setPassword] = useState("123456");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccess(false);
+  const handleSubmit = async () => {
+    setError("");
     setIsLoading(true);
 
     try {
-      await onSubmit(email, password);
-      setSuccess(true);
-      setEmail("");
-      setPassword("");
-    } catch (err: any) {
-      console.log(err);
-      setError("Invalid email or password");
+      const response = await AuthLogin({ email, password });
+
+      if (response.status === 400) {
+        console.log("aqui", response);
+        setError(response.response.data.error);
+        setIsLoading(false);
+        return;
+      }
+
+      setUser({
+        id: response?.id,
+        name: response.name,
+        email: response.email,
+      });
+
+      console.log("aaa", response);
+      localStorage.setItem("token", response.token);
+      setToken(response.token);
+      window.location.replace("/home");
+      navigate("/home");
+      setIsLoading(false);
+    } catch (error) {
+      console.log(error);
     } finally {
       setIsLoading(false);
     }
@@ -45,7 +61,7 @@ export default function LoginForm({ onSubmit }: LoginFormProps) {
         </CardDescription>
       </CardHeader> */}
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -73,15 +89,15 @@ export default function LoginForm({ onSubmit }: LoginFormProps) {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
-          {success && (
-            <Alert>
-              <AlertDescription>Login successful!</AlertDescription>
-            </Alert>
-          )}
-          <Button className="w-full" type="submit" disabled={isLoading}>
+
+          <Button
+            className="w-full"
+            onClick={handleSubmit}
+            disabled={isLoading}
+          >
             {isLoading ? "Logging in..." : "Login"}
           </Button>
-        </form>
+        </div>
       </CardContent>
       <CardFooter className="flex justify-center">
         <p className="text-sm text-muted-foreground">

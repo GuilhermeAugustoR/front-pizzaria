@@ -6,52 +6,32 @@ import ProtectedRoute from "./ProtectedRoute";
 import Home from "@/pages/Home";
 import Products from "@/pages/Products";
 
-const isAuthenticated = true;
+const isAuthenticated = !!localStorage.getItem("token");
 
 export const router = createBrowserRouter([
-    // Rotas Públicas
-    {
-      path: "/login",
-      element: isAuthenticated ? <Navigate to="/home" replace /> : <Login />,
-    },
-    {
-      path: "/",
-      element: isAuthenticated ? <Navigate to="/home" replace /> : <Login />,
-    },
-  
-    // Rotas Protegidas
-    {
-      element: <ProtectedRoute isAuthenticated={isAuthenticated} />,
-      children: [
-        {
-          path: "/home",
-          element: <Home />,
-        },
-      ],
-    },
-    {
-      element: <ProtectedRoute isAuthenticated={isAuthenticated} />,
-      children: [
-        {
-          path: "/categoria",
-          element: <Category />,
-        },
-      ],
-    },
-    {
-      element: <ProtectedRoute isAuthenticated={isAuthenticated} />,
-      children: [
-        {
-          path: "/produtos",
-          element: <Products />,
-        },
-      ],
-    },
-  
-    // Rota para Página Não Encontrada
-    {
-      path: "*",
-      element: <PageNotFound />,
-    },
-  ]);
-  
+  // Rota Inicial Redirecionando para Login
+  {
+    path: "/",
+    element: <Navigate to="/login" replace />,
+  },
+  // Rota Pública
+  {
+    path: "/login",
+    element: isAuthenticated ? <Navigate to="/home" replace /> : <Login />,
+  },
+  // Rotas Protegidas
+  {
+    path: "/",
+    element: <ProtectedRoute isAuthenticated={isAuthenticated} />,
+    children: [
+      { path: "/home", element: <Home /> },
+      { path: "/categoria", element: <Category /> },
+      { path: "/produtos", element: <Products /> },
+    ],
+  },
+  // Rota para Página Não Encontrada
+  {
+    path: "*",
+    element: <PageNotFound />,
+  },
+]);

@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { useState, ChangeEvent, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -51,6 +51,9 @@ import {
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/toast";
 import { X } from "lucide-react";
+import { CreateProduct, ListProduct } from "@/services/Product/productService";
+import { CategoryType } from "../Category";
+import { ListCategory } from "@/services/Category/categoryService";
 
 const MAX_FILE_SIZE = 5000000;
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -81,13 +84,9 @@ type FormValues = z.infer<typeof formSchema>;
 
 type Product = FormValues & { id: string };
 
-const categories = [
-  { id: "1", name: "Eletrônicos" },
-  { id: "2", name: "Roupas" },
-  { id: "3", name: "Alimentos" },
-];
-
 export default function Products() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -96,25 +95,13 @@ export default function Products() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
-  const [products, setProducts] = useState<Product[]>([
-    {
-      id: "1",
-      name: "Smartphone",
-      price: "999.99",
-      description: "Um smartphone avançado",
-      category_id: "1",
-      banner: undefined,
-    },
-    {
-      id: "2",
-      name: "Camiseta",
-      price: "29.99",
-      description: "Uma camiseta confortável",
-      category_id: "2",
-      banner: undefined,
-    },
-  ]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
   const { toast, showToast, hideToast } = useToast();
+
+  const [categories, setCategories] = useState<CategoryType[]>([]);
+  const [openCategories, setOpenCategories] = useState(false);
+  const [image, setImage] = useState<File>();
 
   const createForm = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -146,9 +133,11 @@ export default function Products() {
       reader.onloadend = () => {
         setPreviewImage(reader.result as string);
         setFileName(file.name);
+        setImage(file);
       };
       reader.readAsDataURL(file);
-      form.setValue("banner", event.target.files, { shouldValidate: true });
+
+      form.setValue("banner", event.target.files?.[0]);
     } else {
       setPreviewImage(null);
       setFileName(null);
@@ -167,15 +156,49 @@ export default function Products() {
 
   async function onCreateSubmit(values: FormValues) {
     setIsSubmitting(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const newProduct = { ...values, id: (products.length + 1).toString() };
-    setProducts([...products, newProduct]);
-    setIsSubmitting(false);
-    showToast(`O produto "${values.name}" foi criado com sucesso.`);
-    createForm.reset();
-    setIsCreateOpen(false);
-    setPreviewImage(null);
-    setFileName(null);
+    try {
+      const newProduct = { ...values, id: products.toString() };
+      if (
+        !newProduct.name ||
+        !newProduct.description ||
+        !newProduct.price ||
+        !newProduct.category_id ||
+        !image
+      ) {
+        return;
+      }
+      const formData = new FormData();
+      formData.append("name", newProduct.name);
+      formData.append("description", newProduct.description);
+      formData.append("price", newProduct.price);
+      formData.append("category_id", newProduct.category_id);
+
+      // const fileInput = document.querySelector(
+      //   'input[type="file"]'
+      // ) as HTMLInputElement;
+      // const file = fileInput.files![0];
+
+      formData.append("banner", image);
+
+      const response = await CreateProduct(formData);
+
+      if (response.status === 400) {
+        console.log("error", response);
+        setError(response.response.data.error);
+        setIsSubmitting(false);
+        return;
+      }
+
+      setProducts([...products, newProduct]);
+      setIsSubmitting(false);
+      showToast(`O produto "${values.name}" foi criado com sucesso.`);
+      createForm.reset();
+      setIsCreateOpen(false);
+      setPreviewImage(null);
+      setFileName(null);
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   async function onEditSubmit(values: FormValues) {
@@ -198,7 +221,20 @@ export default function Products() {
   function handleEditClick(product: Product) {
     setEditingProduct(product);
     editForm.reset(product);
+    setPreviewImage(`http://localhost:3333/files/${product.banner}`);
+    setFileName(product.banner ? product.name : null);
     setIsEditOpen(true);
+
+    setTimeout(() => {
+      const fileInput = document.querySelector(
+        'input[type="file"]'
+      ) as HTMLInputElement;
+      if (fileInput && product.banner) {
+        const dataTransfer = new DataTransfer();
+        dataTransfer.items.add(new File([], product.banner));
+        fileInput.files = dataTransfer.files;
+      }
+    }, 0);
   }
 
   function handleDeleteClick(product: Product) {
@@ -218,9 +254,91 @@ export default function Products() {
     }
   }
 
+  const handleGetProducts = async (categoryId: string) => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await ListProduct(categoryId);
+
+      if (response.status === 400) {
+        setError(response.response.data.error);
+        setProducts([]);
+      } else {
+        setProducts(Array.isArray(response) ? response : []);
+      }
+    } catch (error) {
+      console.error(error);
+      setError("Erro ao buscar produtos. Por favor, tente novamente.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGetCategory = async () => {
+    setLoading(true);
+
+    try {
+      const response = await ListCategory();
+
+      if (response.status === 400) {
+        console.log("error", response);
+        setError(response.response.data.error);
+        setLoading(false);
+        return;
+      }
+
+      setCategories(
+        response.map((category: { id: string; name: string }) => ({
+          id: category.id,
+          name: category.name,
+        }))
+      );
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedCategory) {
+      handleGetProducts(selectedCategory);
+    }
+  }, [selectedCategory]);
+
+  useEffect(() => {
+    if (openCategories === true) {
+      handleGetCategory();
+    }
+  }, [openCategories]);
+
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Gerenciamento de Produtos</h1>
+
+      <div className="mb-4">
+        <Select
+          open={openCategories}
+          onOpenChange={() => setOpenCategories(false)}
+          onValueChange={setSelectedCategory}
+          value={selectedCategory}
+        >
+          <SelectTrigger
+            className="w-[200px]"
+            onClick={() => setOpenCategories(true)}
+          >
+            <SelectValue placeholder="Selecione uma categoria" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map((category) => (
+              <SelectItem key={category.id} value={category.id}>
+                {category.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
         <DialogTrigger asChild className="">
@@ -286,12 +404,19 @@ export default function Products() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Categoria</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione uma categoria" />
-                        </SelectTrigger>
-                      </FormControl>
+
+                    <Select
+                      open={openCategories}
+                      onOpenChange={() => setOpenCategories(false)}
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <SelectTrigger
+                        className="w-[200px]"
+                        onClick={() => setOpenCategories(true)}
+                      >
+                        <SelectValue placeholder="Selecione uma categoria" />
+                      </SelectTrigger>
                       <SelectContent>
                         {categories.map((category) => (
                           <SelectItem key={category.id} value={category.id}>
@@ -360,7 +485,7 @@ export default function Products() {
       </Dialog>
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl overflow-y-auto h-[40rem]">
           <DialogHeader>
             <DialogTitle>Editar Produto</DialogTitle>
             <DialogDescription>
@@ -420,12 +545,18 @@ export default function Products() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Categoria</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione uma categoria" />
-                        </SelectTrigger>
-                      </FormControl>
+                    <Select
+                      open={openCategories}
+                      onOpenChange={() => setOpenCategories(false)}
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <SelectTrigger
+                        className="w-[200px]"
+                        onClick={() => setOpenCategories(true)}
+                      >
+                        <SelectValue placeholder="Selecione uma categoria" />
+                      </SelectTrigger>
                       <SelectContent>
                         {categories.map((category) => (
                           <SelectItem key={category.id} value={category.id}>
@@ -523,37 +654,41 @@ export default function Products() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-2">
-            {products.map((product) => (
-              <li
-                key={product.id}
-                className="flex items-center justify-between bg-secondary p-2 rounded"
-              >
-                <div>
-                  <span className="font-bold">{product.name}</span>
-                  <span className="ml-2 text-sm text-muted-foreground">
-                    R$ {product.price}
-                  </span>
-                </div>
-                <div className="space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleEditClick(product)}
-                  >
-                    Editar
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => handleDeleteClick(product)}
-                  >
-                    Excluir
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
+          {loading && <p>Carregando produtos...</p>}
+          {error && <p className="text-red-500">{error}</p>}
+          {!loading && !error && (
+            <ul className="space-y-2">
+              {products.map((product) => (
+                <li
+                  key={product.id}
+                  className="flex items-center justify-between bg-secondary p-2 rounded"
+                >
+                  <div>
+                    <span className="font-bold">{product.name}</span>
+                    <span className="ml-2 text-sm text-muted-foreground">
+                      R$ {product.price}
+                    </span>
+                  </div>
+                  <div className="space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleEditClick(product)}
+                    >
+                      Editar
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => handleDeleteClick(product)}
+                    >
+                      Excluir
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </CardContent>
       </Card>
 

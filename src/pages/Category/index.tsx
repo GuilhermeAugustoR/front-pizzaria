@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -41,30 +41,32 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/toast";
+import {
+  CreateCategory,
+  ListCategory,
+} from "@/services/Category/categoryService";
 
 const formSchema = z.object({
   categoryName: z.string().min(1, "O nome da categoria é obrigatório"),
 });
 
-type Category = {
+export type CategoryType = {
   id: string;
   name: string;
 };
 
 export default function Category() {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [deletingCategory, setDeletingCategory] = useState<Category | null>(
+  const [editingCategory, setEditingCategory] = useState<CategoryType | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState<CategoryType | null>(
     null
   );
-  const [categories, setCategories] = useState<Category[]>([
-    { id: "1", name: "Eletrônicos" },
-    { id: "2", name: "Roupas" },
-    { id: "3", name: "Alimentos" },
-  ]);
+  const [categories, setCategories] = useState<CategoryType[]>([]);
   const { toast, showToast, hideToast } = useToast();
 
   const createForm = useForm<z.infer<typeof formSchema>>({
@@ -83,17 +85,31 @@ export default function Category() {
 
   async function onCreateSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true);
-    // Simula uma chamada de API
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     const newCategory = {
       id: (categories.length + 1).toString(),
       name: values.categoryName,
     };
-    setCategories([...categories, newCategory]);
-    setIsSubmitting(false);
-    showToast(`A categoria "${values.categoryName}" foi criada com sucesso.`);
-    createForm.reset();
-    setIsCreateOpen(false);
+    try {
+      const response = await CreateCategory(newCategory.name);
+
+      if (response.status === 400) {
+        console.log("aqui", response);
+        setError(response.response.data.error);
+        setIsSubmitting(false);
+        return;
+      }
+
+      setCategories([...categories, newCategory]);
+
+      showToast(`A categoria "${values.categoryName}" foi criada com sucesso.`);
+      createForm.reset();
+      setIsCreateOpen(false);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   async function onEditSubmit(values: z.infer<typeof formSchema>) {
@@ -114,13 +130,13 @@ export default function Category() {
     setEditingCategory(null);
   }
 
-  function handleEditClick(category: Category) {
+  function handleEditClick(category: CategoryType) {
     setEditingCategory(category);
     editForm.setValue("categoryName", category.name);
     setIsEditOpen(true);
   }
 
-  function handleDeleteClick(category: Category) {
+  function handleDeleteClick(category: CategoryType) {
     setDeletingCategory(category);
     setIsDeleteOpen(true);
   }
@@ -137,6 +153,36 @@ export default function Category() {
       setDeletingCategory(null);
     }
   }
+
+  useEffect(() => {
+    const handleGetCategory = async () => {
+      setLoading(true);
+
+      try {
+        const response = await ListCategory();
+
+        if (response.status === 400) {
+          console.log("aqui", response);
+          setError(response.response.data.error);
+          setLoading(false);
+          return;
+        }
+
+        setCategories(
+          response.map((category: { id: string; name: string }) => ({
+            id: category.id,
+            name: category.name,
+          }))
+        );
+      } catch (error) {
+        console.log(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    handleGetCategory();
+  }, []);
 
   return (
     <div className="container mx-auto p-4">
