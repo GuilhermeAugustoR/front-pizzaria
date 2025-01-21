@@ -1,6 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-"use client";
-
 import { useState, ChangeEvent, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -76,8 +74,7 @@ const formSchema = z.object({
     .refine(
       (files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type),
       "Apenas .jpg, .jpeg, .png e .webp são suportados"
-    )
-    .optional(),
+    ),
 });
 
 type FormValues = z.infer<typeof formSchema>;
