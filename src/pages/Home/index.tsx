@@ -36,20 +36,25 @@ import {
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/toast";
-import { CreateOrder, ListOrders } from "@/services/Orders/orderService";
+import {
+  AddItemToOrder,
+  CreateOrder,
+  ListOrders,
+} from "@/services/Orders/orderService";
+import { ListCategory } from "@/services/Category/categoryService";
+import { ListProduct } from "@/services/Product/productService";
 
-const products = [
-  { id: "1", name: "Hambúrguer", price: 15 },
-  { id: "2", name: "Batata Frita", price: 8 },
-  { id: "3", name: "Pizza", price: 30 },
-  { id: "4", name: "Refrigerante", price: 5 },
-];
-
+type OrderProduct = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+};
 type OrderItem = {
   id: string;
   name: string;
-  quantity: number;
-  price: number;
+  amount: number;
+  product?: OrderProduct;
 };
 
 type Order = {
@@ -62,17 +67,36 @@ type Order = {
   created_at: string;
 };
 
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+};
+type Categories = {
+  id: string;
+  name: string;
+};
+
 const Home = () => {
   const { toast, showToast, hideToast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [categories, setCategories] = useState<Categories[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+
+  const [selectedProductId, setSelectedProductId] = useState("");
+  const [products, setProducts] = useState<Product[]>([]);
+  const [loadingProducts, setLoadingProducts] = useState(false);
+  const [loadingAddProduct, setLoadingAddProduct] = useState(false);
+
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isOrderDetailsVisible, setIsOrderDetailsVisible] = useState(false);
   const [isNewOrderDialogOpen, setIsNewOrderDialogOpen] = useState(false);
   const [newOrderName, setNewOrderName] = useState("");
   const [newOrderNumber, setNewOrderNumber] = useState("");
   const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
-  const [selectedProductId, setSelectedProductId] = useState("");
   const [productQuantity, setProductQuantity] = useState(1);
   const [loadingCreateOrder, setLoadingCreateOrder] = useState(false);
   const [errorCreateOrder, setErrorCreateOrder] = useState("");
@@ -134,12 +158,13 @@ const Home = () => {
       }
       setOrders(
         response?.map(
-          ({ id, name, status, table, created_at, draft }: Order) => ({
+          ({ id, name, status, table, created_at, draft, items }: Order) => ({
             id: id,
             name: name,
             status: status === false ? "Pendente" : "Finalizado",
             table: table,
             draft: draft,
+            items: items,
             created_at: created_at,
           })
         )
@@ -190,41 +215,56 @@ const Home = () => {
     }
   };
 
-  const handleAddProduct = () => {
+  const handleAddProduct = async () => {
     if (!selectedOrder || !selectedProductId) return;
 
     const productToAdd = products.find((p) => p.id === selectedProductId);
     if (!productToAdd) return;
 
-    const updatedItems = [
-      ...selectedOrder.items,
-      {
-        id: Date.now().toString(),
-        name: productToAdd.name,
-        quantity: productQuantity,
-        price: productToAdd.price,
-      },
-    ];
+    setLoadingAddProduct(true);
+    try {
+      const response = await AddItemToOrder({
+        order_id: selectedOrder.id,
+        product_id: selectedProductId,
+        amount: Number(productQuantity),
+      });
 
-    const updatedOrder = {
-      ...selectedOrder,
-      items: updatedItems,
-      total: updatedItems.reduce(
-        (sum, item) => sum + item.quantity * item.price,
-        0
-      ),
-    };
+      console.log(response);
 
-    setOrders(
-      orders?.map((order) =>
-        order.id === updatedOrder.id ? updatedOrder : order
-      )
-    );
-    setSelectedOrder(updatedOrder);
-    setIsAddProductDialogOpen(false);
-    setSelectedProductId("");
-    setProductQuantity(1);
-    showToast(`${productToAdd.name} adicionado ao pedido`);
+      const updatedItems = [
+        ...selectedOrder.items,
+        {
+          id: Date.now().toString(),
+          name: productToAdd.name,
+          amount: productQuantity,
+          price: productToAdd.price,
+        },
+      ];
+
+      const updatedOrder = {
+        ...selectedOrder,
+        items: updatedItems,
+        // total: updatedItems.reduce(
+        //   (sum, item) => sum + item.amount * item.price,
+        //   0
+        // ),
+      };
+
+      setOrders(
+        orders?.map((order) =>
+          order.id === updatedOrder.id ? updatedOrder : order
+        )
+      );
+      setSelectedOrder(updatedOrder);
+      setIsAddProductDialogOpen(false);
+      setSelectedProductId("");
+      setProductQuantity(1);
+      showToast(`${productToAdd.name} adicionado ao pedido`);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setLoadingAddProduct(true);
+    }
   };
 
   const handleRemoveItem = (itemId: string) => {
@@ -254,6 +294,62 @@ const Home = () => {
   useEffect(() => {
     handleGetOrders();
   }, []);
+
+  useEffect(() => {
+    const handleGetCategory = async () => {
+      setLoadingCategories(true);
+
+      try {
+        const response = await ListCategory();
+
+        if (response.status === 400) {
+          console.log("aqui", response);
+          // setError(response.response.data.error);
+          setLoadingCategories(false);
+          return;
+        }
+
+        console.log(response);
+
+        setCategories(
+          response.map((category: { id: string; name: string }) => ({
+            id: category.id,
+            name: category.name,
+          }))
+        );
+      } catch (error) {
+        console.log(error);
+      } finally {
+        setLoadingCategories(false);
+      }
+    };
+
+    handleGetCategory();
+  }, []);
+
+  useEffect(() => {
+    const handleGetProducts = async () => {
+      setLoadingProducts(true);
+      // setError("");
+
+      try {
+        const response = await ListProduct(selectedCategoryId);
+
+        if (response.status === 400) {
+          // setError(response.response.data.error);
+          setProducts([]);
+        } else {
+          setProducts(Array.isArray(response) ? response : []);
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setLoadingProducts(false);
+      }
+    };
+
+    handleGetProducts();
+  }, [selectedCategoryId]);
 
   return (
     <div className="container mx-auto p-4">
@@ -317,11 +413,11 @@ const Home = () => {
                 <TableBody>
                   {selectedOrder?.items?.map((item) => (
                     <TableRow key={item.id}>
-                      <TableCell>{item.name}</TableCell>
-                      <TableCell>{item.quantity}</TableCell>
-                      <TableCell>R$ {item.price.toFixed(2)}</TableCell>
+                      <TableCell>{selectedOrder?.name}</TableCell>
+                      <TableCell>{item.amount}</TableCell>
+                      <TableCell>R$ {Number(item.product?.price)?.toFixed(2)}</TableCell>
                       <TableCell>
-                        R$ {(item.quantity * item.price).toFixed(2)}
+                        R$ {(Number(item.amount * Number(item.product?.price)))?.toFixed(2)}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -399,13 +495,13 @@ const Home = () => {
                           </Label>
                           <Input
                             id={`item-${index}`}
-                            defaultValue={item.quantity}
+                            defaultValue={item.amount}
                             className="col-span-3"
                             onChange={(e) => {
                               const updatedItems = [...selectedOrder.items];
                               updatedItems[index] = {
                                 ...item,
-                                quantity: Number.parseInt(e.target.value) || 0,
+                                amount: Number.parseInt(e.target.value) || 0,
                               };
                               setSelectedOrder({
                                 ...selectedOrder,
@@ -498,11 +594,33 @@ const Home = () => {
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="product" className="text-right">
+                Categoria
+              </Label>
+              <Select
+                onValueChange={setSelectedCategoryId}
+                value={selectedCategoryId}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Selecione uma categoria" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories?.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="product" className="text-right">
                 Produto
               </Label>
               <Select
                 onValueChange={setSelectedProductId}
                 value={selectedProductId}
+                disabled={!selectedCategoryId}
               >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Selecione um produto" />
@@ -524,6 +642,7 @@ const Home = () => {
                 id="quantity"
                 type="number"
                 min="1"
+                disabled={!selectedProductId}
                 value={productQuantity}
                 onChange={(e) =>
                   setProductQuantity(Number.parseInt(e.target.value))
