@@ -4,7 +4,7 @@ import { MenuBar } from "./components/menuBar";
 
 function App() {
   return (
-    <div className="flex flex-col w-screen h-screen bg-slate-200">
+    <div className="flex flex-col w-screen flex-1 h-screen bg-slate-200">
       <MenuBar />
 
       <RouterProvider router={router} />

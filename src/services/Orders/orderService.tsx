@@ -82,3 +82,37 @@ export const CreateOrder = async ({ name, table }: ICreateOrder) => {
     return error;
   }
 };
+
+export const SendOrder = async (order_id: string) => {
+  const body = {
+    order_id,
+  };
+  try {
+    const response: AxiosResponse = await api.put(`order/send`, body, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    return error;
+  }
+};
+
+export const FinishOrder = async (order_id: string) => {
+  const body = {
+    order_id,
+  };
+  try {
+    const response: AxiosResponse = await api.put(`order/finish`, body, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    return error;
+  }
+};

@@ -39,10 +39,13 @@ import { Toast } from "@/components/toast";
 import {
   AddItemToOrder,
   CreateOrder,
+  FinishOrder,
   ListOrders,
+  SendOrder,
 } from "@/services/Orders/orderService";
 import { ListCategory } from "@/services/Category/categoryService";
 import { ListProduct } from "@/services/Product/productService";
+import Spinner from "@/components/spinner";
 
 type OrderProduct = {
   id: string;
@@ -81,6 +84,7 @@ const Home = () => {
   const { toast, showToast, hideToast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [loadingOrders, setLoadingOrders] = useState(false);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [categories, setCategories] = useState<Categories[]>([]);
@@ -99,7 +103,22 @@ const Home = () => {
   const [isAddProductDialogOpen, setIsAddProductDialogOpen] = useState(false);
   const [productQuantity, setProductQuantity] = useState(1);
   const [loadingCreateOrder, setLoadingCreateOrder] = useState(false);
-  const [errorCreateOrder, setErrorCreateOrder] = useState("");
+  const [error, setError] = useState("");
+
+  const handleStatus = (status: boolean, draft: boolean) => {
+    const newStatus = status.toString();
+
+    if ((newStatus === "Aberta" || status === false) && draft === true) {
+      return "Aberta";
+    } else if (
+      (newStatus === "Pendente" || status === false) &&
+      draft === false
+    ) {
+      return "Pendente";
+    } else {
+      return "Finalizado";
+    }
+  };
 
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
@@ -111,13 +130,32 @@ const Home = () => {
     setSelectedOrder(null);
   };
 
-  const handleStatusChange = (orderId: string, newStatus: Order["status"]) => {
-    setOrders(
-      orders?.map((order) =>
-        order.id === orderId ? { ...order, status: newStatus } : order
-      )
-    );
-    showToast(`Status do pedido ${orderId} atualizado para ${newStatus}`);
+  const handleStatusChange = async (
+    orderId: string,
+    newStatus: Order["status"]
+  ) => {
+    setLoadingAddProduct(true);
+    setError("");
+    try {
+      const response = await SendOrder(orderId);
+      if (response.status === 400) {
+        console.log("error", response);
+        setError(response.response.data.error);
+        showToast(response.response.data.error);
+        return;
+      }
+
+      setOrders(
+        orders?.map((order) =>
+          order.id === orderId ? { ...order, status: newStatus } : order
+        )
+      );
+      showToast(`Status do pedido ${orderId} atualizado para "Pendente"`);
+    } catch (error) {
+      console.log(error);
+    } finally {
+      setLoadingAddProduct(false);
+    }
   };
 
   const handleEditOrder = (orderId: string, updatedItems: OrderItem[]) => {
@@ -127,10 +165,6 @@ const Home = () => {
           ? {
               ...order,
               items: updatedItems,
-              total: updatedItems.reduce(
-                (sum, item) => sum + item.quantity * item.price,
-                0
-              ),
             }
           : order
       )
@@ -139,29 +173,49 @@ const Home = () => {
     showToast(`Pedido ${orderId} atualizado com sucesso`);
   };
 
-  const handleFinalizeOrder = (orderId: string) => {
-    setOrders(orders.filter((order) => order.id !== orderId));
-    setSelectedOrder(null);
-    setIsOrderDetailsVisible(false);
-    showToast(`Pedido ${orderId} finalizado com sucesso`);
+  const handleFinalizeOrder = async (orderId: string) => {
+    setError("");
+    try {
+      const response = await FinishOrder(orderId);
+
+      if (response.status === 400) {
+        console.log("error", response);
+        setError(response.response.data.error);
+        showToast(response.response.data.error);
+        return;
+      }
+
+      setOrders(orders.filter((order) => order.id !== orderId));
+      setSelectedOrder(null);
+      setIsOrderDetailsVisible(false);
+      showToast(`Pedido ${orderId} finalizado com sucesso`);
+      console.log(response);
+    } catch (error) {
+      console.log(error);
+    }
   };
 
   const handleGetOrders = async () => {
+    setLoadingOrders(true);
+    setError("");
     try {
       const response = await ListOrders();
 
       if (response.status === 400) {
         console.log("error", response);
-        // setErrorCreateOrder(response.response.data.error);
+        setLoadingOrders(false);
+        setError(response.response.data.error);
+        showToast(response.response.data.error);
         // setLoadingCreateOrder(false);
         return;
       }
+
       setOrders(
         response?.map(
           ({ id, name, status, table, created_at, draft, items }: Order) => ({
             id: id,
             name: name,
-            status: status === false ? "Pendente" : "Finalizado",
+            status: handleStatus(status, draft),
             table: table,
             draft: draft,
             items: items,
@@ -169,15 +223,16 @@ const Home = () => {
           })
         )
       );
-      console.log("orders", response);
     } catch (error) {
       console.log(error);
+    } finally {
+      setLoadingOrders(false);
     }
   };
 
   const handleNewOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
+    setError("");
     setLoadingCreateOrder(true);
     try {
       const response = await CreateOrder({
@@ -187,7 +242,8 @@ const Home = () => {
 
       if (response.status === 400) {
         console.log("error", response);
-        setErrorCreateOrder(response.response.data.error);
+        setError(response.response.data.error);
+        showToast(response.response.data.error);
         setLoadingCreateOrder(false);
         return;
       }
@@ -221,6 +277,7 @@ const Home = () => {
     const productToAdd = products.find((p) => p.id === selectedProductId);
     if (!productToAdd) return;
 
+    setError("");
     setLoadingAddProduct(true);
     try {
       const response = await AddItemToOrder({
@@ -229,7 +286,13 @@ const Home = () => {
         amount: Number(productQuantity),
       });
 
-      console.log(response);
+      if (response.status === 400) {
+        console.log("error", response);
+        setError(response.response.data.error);
+        showToast(response.response.data.error);
+        setLoadingAddProduct(false);
+        return;
+      }
 
       const updatedItems = [
         ...selectedOrder.items,
@@ -258,12 +321,11 @@ const Home = () => {
       setSelectedOrder(updatedOrder);
       setIsAddProductDialogOpen(false);
       setSelectedProductId("");
-      setProductQuantity(1);
+      // setProductQuantity(1);
       showToast(`${productToAdd.name} adicionado ao pedido`);
+      handleStatusChange(selectedOrder.id, selectedOrder.status);
     } catch (error) {
       console.log(error);
-    } finally {
-      setLoadingAddProduct(true);
     }
   };
 
@@ -276,10 +338,6 @@ const Home = () => {
     const updatedOrder = {
       ...selectedOrder,
       items: updatedItems,
-      total: updatedItems.reduce(
-        (sum, item) => sum + item.quantity * item.price,
-        0
-      ),
     };
 
     setOrders(
@@ -298,18 +356,17 @@ const Home = () => {
   useEffect(() => {
     const handleGetCategory = async () => {
       setLoadingCategories(true);
-
+      setError("");
       try {
         const response = await ListCategory();
 
         if (response.status === 400) {
           console.log("aqui", response);
-          // setError(response.response.data.error);
+          setError(response.response.data.error);
+          showToast(response.response.data.error);
           setLoadingCategories(false);
           return;
         }
-
-        console.log(response);
 
         setCategories(
           response.map((category: { id: string; name: string }) => ({
@@ -330,14 +387,16 @@ const Home = () => {
   useEffect(() => {
     const handleGetProducts = async () => {
       setLoadingProducts(true);
-      // setError("");
+      setError("");
 
       try {
         const response = await ListProduct(selectedCategoryId);
 
         if (response.status === 400) {
-          // setError(response.response.data.error);
+          setError(response.response.data.error);
+          showToast(response.response.data.error);
           setProducts([]);
+          return;
         } else {
           setProducts(Array.isArray(response) ? response : []);
         }
@@ -352,7 +411,7 @@ const Home = () => {
   }, [selectedCategoryId]);
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container mx-auto p-4 bg-slate-200">
       <h1 className="text-2xl font-bold mb-4">Gerenciamento de Pedidos</h1>
       <Button onClick={() => setIsNewOrderDialogOpen(true)} className="mb-4">
         Novo Pedido
@@ -365,23 +424,31 @@ const Home = () => {
           </CardHeader>
           <CardContent>
             <div className="h-[30rem] overflow-y-auto space-y-4">
-              {orders?.map((order) => (
-                <div
-                  key={order.id}
-                  className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-100"
-                  onClick={() => handleOrderClick(order)}
-                >
-                  <div>
-                    <h3 className="font-semibold">{order.table}</h3>
-                    <p className="text-sm text-gray-500">{order.created_at}</p>
-                  </div>
-                  <div>
-                    <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
-                      {order.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
+              {loadingOrders ? (
+                <Spinner />
+              ) : (
+                <>
+                  {orders?.map((order) => (
+                    <div
+                      key={order.id}
+                      className="flex items-center justify-between p-4 border rounded-lg cursor-pointer hover:bg-gray-100"
+                      onClick={() => handleOrderClick(order)}
+                    >
+                      <div>
+                        <h3 className="font-semibold">{order.table}</h3>
+                        <p className="text-sm text-gray-500">
+                          {order.created_at}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">
+                          {handleStatus(order.status, order.draft)}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -415,9 +482,14 @@ const Home = () => {
                     <TableRow key={item.id}>
                       <TableCell>{selectedOrder?.name}</TableCell>
                       <TableCell>{item.amount}</TableCell>
-                      <TableCell>R$ {Number(item.product?.price)?.toFixed(2)}</TableCell>
                       <TableCell>
-                        R$ {(Number(item.amount * Number(item.product?.price)))?.toFixed(2)}
+                        R$ {Number(item.product?.price)?.toFixed(2)}
+                      </TableCell>
+                      <TableCell>
+                        R${" "}
+                        {Number(
+                          item.amount * Number(item.product?.price)
+                        )?.toFixed(2)}
                       </TableCell>
                       <TableCell>
                         <Button
@@ -444,25 +516,27 @@ const Home = () => {
               </div>
             </CardContent>
             <CardFooter className="flex justify-between">
-              <Select
+              {/* <Select
                 onValueChange={(value) =>
                   handleStatusChange(
                     selectedOrder.id,
-                    value === "Pendente" ? false : true
+                    value === "Pendente" || value === "Aberta" ? false : true
                   )
                 }
-                defaultValue={
-                  selectedOrder.status === false ? "Pendente" : "Finalizado"
-                }
+                defaultValue={handleStatus(
+                  selectedOrder.status,
+                  selectedOrder.draft
+                )}
               >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Alterar status" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="Aberta">Aberta</SelectItem>
                   <SelectItem value="Pendente">Pendente</SelectItem>
                   <SelectItem value="Finalizado">Finalizado</SelectItem>
                 </SelectContent>
-              </Select>
+              </Select> */}
               <div>
                 <Dialog
                   open={isEditDialogOpen}
@@ -574,7 +648,14 @@ const Home = () => {
               </div>
             </div>
             <DialogFooter>
-              <Button onClick={handleNewOrderSubmit}>Criar Pedido</Button>
+              <Button
+                onClick={handleNewOrderSubmit}
+                disabled={
+                  loadingCreateOrder || !newOrderName || !newOrderNumber
+                }
+              >
+                {loadingCreateOrder ? <Spinner /> : "Criar Pedido"}
+              </Button>
             </DialogFooter>
           </div>
         </DialogContent>
@@ -604,11 +685,17 @@ const Home = () => {
                   <SelectValue placeholder="Selecione uma categoria" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categories?.map((item) => (
-                    <SelectItem key={item.id} value={item.id}>
-                      {item.name}
-                    </SelectItem>
-                  ))}
+                  {loadingCategories ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      {categories?.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -626,11 +713,17 @@ const Home = () => {
                   <SelectValue placeholder="Selecione um produto" />
                 </SelectTrigger>
                 <SelectContent>
-                  {products?.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name}
-                    </SelectItem>
-                  ))}
+                  {loadingProducts ? (
+                    <Spinner />
+                  ) : (
+                    <>
+                      {products?.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {product.name}
+                        </SelectItem>
+                      ))}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -652,11 +745,23 @@ const Home = () => {
             </div>
           </div>
           <DialogFooter>
-            <Button onClick={handleAddProduct}>Adicionar</Button>
+            <Button
+              onClick={handleAddProduct}
+              disabled={
+                loadingAddProduct ||
+                !selectedCategoryId ||
+                !productQuantity ||
+                !selectedProductId
+              }
+            >
+              {loadingAddProduct ? <Spinner /> : "Adicionar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {toast && <Toast message={toast.message} onClose={hideToast} />}
+      {toast && (
+        <Toast message={toast.message} error={!!error} onClose={hideToast} />
+      )}
     </div>
   );
 };
