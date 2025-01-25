@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/useToast";
 import { Toast } from "@/components/toast";
 import {
   AddItemToOrder,
+  CancelOrder,
   CreateOrder,
   FinishOrder,
   ListOrders,
@@ -120,6 +121,15 @@ const Home = () => {
     }
   };
 
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    const options: Intl.DateTimeFormatOptions = {
+      year: "numeric", // Correção: "numeric" em vez de string genérica
+      month: "long", // Exemplo de formato: Janeiro
+      day: "numeric",
+    };
+    return date.toLocaleDateString("pt-BR", options);
+  }
   const handleOrderClick = (order: Order) => {
     setSelectedOrder(order);
     setIsOrderDetailsVisible(true);
@@ -329,24 +339,37 @@ const Home = () => {
     }
   };
 
-  const handleRemoveItem = (itemId: string) => {
+  const handleRemoveItem = async (itemId: string) => {
     if (!selectedOrder) return;
+    setError("");
+    try {
+      const response = await CancelOrder(itemId);
 
-    const updatedItems = selectedOrder.items.filter(
-      (item) => item.id !== itemId
-    );
-    const updatedOrder = {
-      ...selectedOrder,
-      items: updatedItems,
-    };
+      if (response.status === 400) {
+        console.log("error", response);
+        setError(response.response.data.error);
+        showToast(response.response.data.error);
+        return;
+      }
 
-    setOrders(
-      orders?.map((order) =>
-        order.id === updatedOrder.id ? updatedOrder : order
-      )
-    );
-    setSelectedOrder(updatedOrder);
-    showToast("Item removido do pedido");
+      const updatedItems = selectedOrder.items.filter(
+        (item) => item.id !== itemId
+      );
+      const updatedOrder = {
+        ...selectedOrder,
+        items: updatedItems,
+      };
+
+      setOrders(
+        orders?.map((order) =>
+          order.id === updatedOrder.id ? updatedOrder : order
+        )
+      );
+      setSelectedOrder(updatedOrder);
+      showToast("Item removido do pedido");
+    } catch (error) {
+      console.log(error);
+    }
   };
 
   useEffect(() => {
@@ -435,9 +458,9 @@ const Home = () => {
                       onClick={() => handleOrderClick(order)}
                     >
                       <div>
-                        <h3 className="font-semibold">{order.table}</h3>
+                        <h3 className="font-semibold">Mesa - {order.table}</h3>
                         <p className="text-sm text-gray-500">
-                          {order.created_at}
+                          {formatDate(order.created_at)}
                         </p>
                       </div>
                       <div>
@@ -506,16 +529,27 @@ const Home = () => {
               </Table>
               <div className="mt-4">
                 <p className="font-semibold">
-                  {/* Total: R$ {selectedOrder.total.toFixed(2)} */}
+                  Total: R${" "}
+                  {selectedOrder.items
+                    ?.reduce(
+                      (acc, { product, amount }) =>
+                        acc + product!.price * amount,
+                      0
+                    )
+                    .toFixed(2)}
                 </p>
                 <p>Status: {selectedOrder.status}</p>
-                <p>Criado em: {selectedOrder.created_at.toLocaleString()}</p>
-                <Button onClick={() => setIsAddProductDialogOpen(true)}>
+                <p>Criado em: {formatDate(selectedOrder.created_at)}</p>
+
+                <Button
+                  onClick={() => setIsAddProductDialogOpen(true)}
+                  className="mt-4"
+                >
                   Adicionar Produto
                 </Button>
               </div>
             </CardContent>
-            <CardFooter className="flex justify-between">
+            <CardFooter className="flex">
               {/* <Select
                 onValueChange={(value) =>
                   handleStatusChange(
@@ -537,13 +571,13 @@ const Home = () => {
                   <SelectItem value="Finalizado">Finalizado</SelectItem>
                 </SelectContent>
               </Select> */}
-              <div>
+              <div className="flex w-80 justify-between">
                 <Dialog
                   open={isEditDialogOpen}
                   onOpenChange={setIsEditDialogOpen}
                 >
                   <DialogTrigger asChild>
-                    <Button variant="outline" className="mr-2">
+                    <Button variant="outline" className="">
                       Editar
                     </Button>
                   </DialogTrigger>
@@ -558,18 +592,18 @@ const Home = () => {
                     <div className="grid gap-4 py-4">
                       {selectedOrder?.items?.map((item, index) => (
                         <div
-                          key={item.id}
+                          key={item?.product?.id}
                           className="grid grid-cols-4 items-center gap-4"
                         >
                           <Label
                             htmlFor={`item-${index}`}
                             className="text-right"
                           >
-                            {item.name}
+                            {item?.product?.name}
                           </Label>
                           <Input
                             id={`item-${index}`}
-                            defaultValue={item.amount}
+                            defaultValue={item?.amount}
                             className="col-span-3"
                             onChange={(e) => {
                               const updatedItems = [...selectedOrder.items];
@@ -601,8 +635,17 @@ const Home = () => {
                     </DialogFooter>
                   </DialogContent>
                 </Dialog>
+
                 <Button onClick={() => handleFinalizeOrder(selectedOrder.id)}>
                   Finalizar
+                </Button>
+
+                <Button
+                  onClick={() => {
+                    // handleRemoveItem(selectedOrder.id);
+                  }}
+                >
+                  Cancelar Pedido
                 </Button>
               </div>
             </CardFooter>

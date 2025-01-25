@@ -100,6 +100,23 @@ export const SendOrder = async (order_id: string) => {
   }
 };
 
+export const CancelOrder = async (order_id: string) => {
+  try {
+    const response: AxiosResponse = await api.delete(`order/delete`, {
+      params: {
+        order_id,
+      },
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    return error;
+  }
+};
+
 export const FinishOrder = async (order_id: string) => {
   const body = {
     order_id,
