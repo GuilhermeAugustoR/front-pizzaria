@@ -60,6 +60,32 @@ export const AddItemToOrder = async ({
   }
 };
 
+interface IEditItemToOrder {
+  product_id: string;
+  newAmount: number;
+}
+export const EditItemToOrder = async ({
+  newAmount,
+  product_id,
+}: IEditItemToOrder) => {
+  const body = {
+    newAmount,
+    product_id,
+  };
+
+  try {
+    const response: AxiosResponse = await api.put("order/update", body, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    return response.data;
+  } catch (error) {
+    return error;
+  }
+};
+
 interface ICreateOrder {
   table: number;
   name: string;
@@ -100,14 +126,14 @@ export const SendOrder = async (order_id: string) => {
   }
 };
 
-export const CancelOrder = async (order_id: string) => {
+export const CancelOrder = async (item_id: string) => {
   try {
     const response: AxiosResponse = await api.delete(`order/delete`, {
-      params: {
-        order_id,
-      },
       headers: {
         Authorization: `Bearer ${token}`,
+      },
+      params: {
+        item_id, // O Axios adiciona automaticamente na query string
       },
     });
 

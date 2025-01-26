@@ -40,6 +40,7 @@ import {
   AddItemToOrder,
   CancelOrder,
   CreateOrder,
+  EditItemToOrder,
   FinishOrder,
   ListOrders,
   SendOrder,
@@ -85,6 +86,7 @@ const Home = () => {
   const { toast, showToast, hideToast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [originalItems, setOriginalItems] = useState<OrderItem[] | null>(null);
   const [loadingOrders, setLoadingOrders] = useState(false);
 
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
@@ -96,6 +98,7 @@ const Home = () => {
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [loadingAddProduct, setLoadingAddProduct] = useState(false);
 
+  const [loadingEditProduct, setLoadingEditProduct] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isOrderDetailsVisible, setIsOrderDetailsVisible] = useState(false);
   const [isNewOrderDialogOpen, setIsNewOrderDialogOpen] = useState(false);
@@ -168,19 +171,49 @@ const Home = () => {
     }
   };
 
-  const handleEditOrder = (orderId: string, updatedItems: OrderItem[]) => {
-    setOrders(
-      orders?.map((order) =>
-        order.id === orderId
-          ? {
-              ...order,
-              items: updatedItems,
-            }
-          : order
-      )
-    );
-    setIsEditDialogOpen(false);
-    showToast(`Pedido ${orderId} atualizado com sucesso`);
+  const handleEditOrder = async (
+    product_id: string,
+    updatedItems: OrderItem[]
+  ) => {
+    setError("");
+    setLoadingEditProduct(true);
+
+    try {
+      for (const item of updatedItems) {
+        const response = await EditItemToOrder({
+          product_id: item.id,
+          newAmount: item.amount,
+        });
+
+        if (response.status === 400) {
+          console.error("Error updating item:", response.response.data.error);
+          setError(response.response.data.error);
+          showToast(response.response.data.error);
+          setLoadingEditProduct(false);
+          return;
+        }
+      }
+
+      // Atualizar o estado local dos pedidos
+      setOrders(
+        orders?.map((order) =>
+          order.id === product_id
+            ? {
+                ...order,
+                items: updatedItems,
+              }
+            : order
+        )
+      );
+
+      setIsEditDialogOpen(false);
+      showToast(`Pedido ${product_id} atualizado com sucesso`);
+    } catch (error) {
+      console.error("Error:", error);
+      showToast("Erro ao atualizar o pedido. Tente novamente.");
+    } finally {
+      setLoadingEditProduct(false);
+    }
   };
 
   const handleFinalizeOrder = async (orderId: string) => {
@@ -518,7 +551,11 @@ const Home = () => {
                         <Button
                           variant="destructive"
                           size="sm"
-                          onClick={() => handleRemoveItem(item.id)}
+                          onClick={() => {
+                            console.log(item.id);
+
+                            handleRemoveItem(item.id);
+                          }}
                         >
                           Remover
                         </Button>
@@ -574,7 +611,19 @@ const Home = () => {
               <div className="flex w-80 justify-between">
                 <Dialog
                   open={isEditDialogOpen}
-                  onOpenChange={setIsEditDialogOpen}
+                  onOpenChange={(isOpen) => {
+                    setIsEditDialogOpen(isOpen);
+
+                    if (isOpen && selectedOrder) {
+                      // Armazene uma cópia dos itens originais
+                      setOriginalItems([...selectedOrder.items]);
+                    } else if (!isOpen && originalItems) {
+                      // Restaure os itens originais se o modal for fechado sem salvar
+                      setSelectedOrder((prev) =>
+                        prev ? { ...prev, items: originalItems } : null
+                      );
+                    }
+                  }}
                 >
                   <DialogTrigger asChild>
                     <Button variant="outline" className="">
@@ -628,9 +677,11 @@ const Home = () => {
                             selectedOrder.id,
                             selectedOrder.items
                           );
+                          setOriginalItems(null);
                         }}
+                        disabled={loadingEditProduct}
                       >
-                        Salvar alterações
+                        {loadingEditProduct ? <Spinner /> : "Salvar alterações"}
                       </Button>
                     </DialogFooter>
                   </DialogContent>
